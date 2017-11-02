@@ -17,7 +17,7 @@ SDL_Window* g_window = nullptr;
 // consists of positions (from positionBuffer) and color (from colorBuffer)
 // in this example.
 GLuint vertexArrayObject;	
-
+GLuint vertexArrayObject2;
 // The shaderProgram combines a vertex shader (vertexShader) and a
 // fragment shader (fragmentShader) into a single GLSL program that can
 // be activated (glUseProgram()).
@@ -37,6 +37,19 @@ void initGL()
 		-0.5f,  -0.5f, 1.0f,	// v1
 		0.5f,  -0.5f, 1.0f		// v2
 	};
+
+	//new triangle positions
+	const float positions2[] = {
+		//	 X      Y     Z
+		1.0f, 0.0f, 1.0f,		// v0
+		0.4f, -0.3f, 1.0f,	// v1
+		0.2f, 0.5f, 1.0f,   // v2
+		- 1.0f, 0.8f, 1.0f,		// v0
+		-0.6f, 0.8f, 1.0f,	// v1
+		-0.8f, -0.5f, 1.0f		// v2
+	};
+
+
 	// Create a handle for the position vertex buffer object
 	// See OpenGL Spec §2.9 Buffer Objects 
 	// - http://www.cse.chalmers.se/edu/course/TDA361/glspec30.20080923.pdf#page=54
@@ -55,8 +68,8 @@ void initGL()
 	// Define the colors for each of the three vertices of the triangle
 	const float colors[] = {
 		//  R     G		B
-		1.0f, 1.0f, 1.0f,		// White
-		1.0f, 1.0f, 1.0f,		// White
+		0.2f, 0.4f, 0.6f,		// White
+		0.2f, 0.4f, 0.1f,		// White
 		1.0f, 1.0f, 1.0f		// White
 	};
 	// Create a handle for the vertex color buffer
@@ -66,6 +79,28 @@ void initGL()
 	glBindBuffer( GL_ARRAY_BUFFER, colorBuffer );	
 	// Send the vertex color data to the current buffer
 	glBufferData( GL_ARRAY_BUFFER, sizeof(colors), colors, GL_STATIC_DRAW );
+
+
+
+////////////////////////////////
+	///////////////////////// NEW COLORBUFFER
+
+	const float colors2[] = {
+		//  R     G		B
+		0.2f, 0.4f, 0.6f,		// White
+		0.2f, 0.4f, 0.1f,		// White
+		1.0f, 1.0f, 1.0f,		// White
+		0.2f, 0.4f, 0.6f,		// White
+		0.2f, 0.4f, 0.1f,		// White
+		1.0f, 1.0f, 1.0f		// White
+	};
+	// Create a handle for the vertex color buffer
+	GLuint colorBuffer2;
+	glGenBuffers(1, &colorBuffer2);
+	// Set the newly created buffer as the current one
+	glBindBuffer(GL_ARRAY_BUFFER, colorBuffer2);
+	// Send the vertex color data to the current buffer
+	glBufferData(GL_ARRAY_BUFFER, sizeof(colors2), colors2, GL_STATIC_DRAW);
 
 	//////////////////////////////////////////////////////////////////////////////
 	// Create a vertex array object and connect the vertex buffer objects to it
@@ -92,6 +127,30 @@ void initGL()
 	// TASK 5: Add two new triangles. First by creating another vertex array 
 	//		   object, and then by adding a triangle to an existing VAO. 
 	//////////////////////////////////////////////////////////////////////////////
+	
+	// new position buffer 2
+	GLuint positionBuffer2;
+	glGenBuffers(1, &positionBuffer2);
+	// Set the newly created buffer as the current one
+	glBindBuffer(GL_ARRAY_BUFFER, positionBuffer2);
+	// Send the vertex position data to the current buffer
+	glBufferData(GL_ARRAY_BUFFER, sizeof(positions2), positions2, GL_STATIC_DRAW);
+
+
+	// bindings
+	glGenVertexArrays(1, &vertexArrayObject2);
+	glBindVertexArray(vertexArrayObject2);
+
+	glBindBuffer(GL_ARRAY_BUFFER, positionBuffer2);
+	//glBindBuffer(GL_ARRAY_BUFFER, positionBuffer3);
+
+	glVertexAttribPointer(0, 3, GL_FLOAT, false/*normalized*/, 0/*stride*/, 0/*offset*/);
+
+	glBindBuffer(GL_ARRAY_BUFFER, colorBuffer2);
+
+	glVertexAttribPointer(1, 3, GL_FLOAT, false/*normalized*/, 0/*stride*/, 0/*offset*/);
+	glEnableVertexAttribArray(0); // Enable the vertex position attribute
+	glEnableVertexAttribArray(1); // Enable the vertex color attribute 
 
 
 
@@ -177,9 +236,10 @@ void display(void)
 	///////////////////////////////////////////////////////////////////////////
 	// TASK 1: Create a bug here to try the debugger.
 	///////////////////////////////////////////////////////////////////////////
+
 	glClearColor(g_clearColor[0], g_clearColor[1], g_clearColor[2], 1.0);	// Set clear color
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // Clears the color buffer and the z-buffer
-
+	//glClear(GL_BUFFER);
 	// We disable backface culling for this tutorial, otherwise care must be taken with the winding order
 	// of the vertices. It is however a lot faster to enable culling when drawing large scenes.
 	glDisable(GL_CULL_FACE);
@@ -188,8 +248,11 @@ void display(void)
 	glUseProgram( shaderProgram );			// Set the shader program to use for this draw call
 	// Bind the vertex array object that contains all the vertex data.
 	glBindVertexArray(vertexArrayObject);
+	glDrawArrays(GL_TRIANGLES, 0, 3);
+	glBindVertexArray(vertexArrayObject2);
 	// Submit triangles from currently bound vertex array object.
-	glDrawArrays( GL_TRIANGLES, 0, 3 );				// Render 1 triangle
+	glDrawArrays( GL_TRIANGLES, 0, 6 );				// Render 1 triangle
+
 
 
 	glUseProgram( 0 );						// "unsets" the current shader program. Not really necessary.
@@ -225,7 +288,7 @@ int main(int argc, char *argv[])
 		// TASK 2: Uncomment the call to gui below to show the GUI
 		///////////////////////////////////////////////////////////////////////////
 		// Then render overlay GUI.
-		// gui();
+		 gui();
 
 		// Swap front and back buffer. This frame will now been displayed.
 		SDL_GL_SwapWindow(g_window);			

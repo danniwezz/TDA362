@@ -44,6 +44,9 @@ float currentTime = 0.0f;
 Model *cityModel = nullptr, *carModel = nullptr;
 mat4 carModelMatrix(1.0f);
 
+//new car model maxtix
+mat4 carModelMatrix2(1.0f);
+
 vec3 worldUp = vec3(0.0f, 1.0f, 0.0f);
 
 // Camera parameters
@@ -115,6 +118,11 @@ void display(void)
 
 	// car
 	modelViewProjectionMatrix = projectionMatrix * viewMatrix * carModelMatrix;
+	glUniformMatrix4fv(loc, 1, false, &modelViewProjectionMatrix[0].x);
+	render(carModel);
+
+	//second car 
+	modelViewProjectionMatrix = projectionMatrix * viewMatrix * carModelMatrix2;
 	glUniformMatrix4fv(loc, 1, false, &modelViewProjectionMatrix[0].x);
 	render(carModel);
 
@@ -205,19 +213,30 @@ int main(int argc, char *argv[])
 		// check keyboard state (which keys are still pressed)
 		const uint8_t *state = SDL_GetKeyboardState(nullptr);
 
-		// implement camera controls based on key states
+		// implement controls based on key states
+		float speed = 0.3f;
+		static mat4 T(1.0f), R(1.0f);
 		if (state[SDL_SCANCODE_UP]) {
-			printf("Key Up is pressed down\n");
+			T[3] += speed * R[2];
 		}
 		if (state[SDL_SCANCODE_DOWN]) {
-			printf("Key Down is pressed down\n");
+			T[3] -= speed * R[2];
 		}
 		if (state[SDL_SCANCODE_LEFT]) {
-			printf("Key Left is pressed down\n");
+			R[0] -= 0.03f * R[2];
+		
 		}
 		if (state[SDL_SCANCODE_RIGHT]) {
-			printf("Key Right is pressed down\n");
+			R[0] += 0.03f * R[2];
+		
 		}
+
+		R[0] = normalize(R[0]);
+		R[2] = vec4(cross(vec3(R[0]), vec3(R[1])), 0.0f);
+
+		carModelMatrix = T * R;
+	
+		carModelMatrix2 = rotate(currentTime, vec3(0.0f, 1.0f, 0.0f)) * translate(vec3(-10.0f, 0.0f, 0.0f));
 	}
 
 	// Shut down everything. This includes the window and all other subsystems.
