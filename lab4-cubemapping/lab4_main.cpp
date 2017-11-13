@@ -106,6 +106,7 @@ void initialize()
 	// NOTE: You can safely ignore this until you start Task 4.
 	///////////////////////////////////////////////////////////////////////////
 	{ // Environment map
+
 		HDRImage image("../scenes/envmaps/" + envmap_base_name + ".hdr");
 		glGenTextures(1, &environmentMap);
 		glBindTexture(GL_TEXTURE_2D, environmentMap);
@@ -114,6 +115,8 @@ void initialize()
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+
+
 	}
 	{ // Irradiance map
 		HDRImage image("../scenes/envmaps/" + envmap_base_name + "_irradiance.hdr");
@@ -140,12 +143,14 @@ void initialize()
 		}
 	}
 
+
 	///////////////////////////////////////////////////////////////////////////
 	// Load .obj models
 	///////////////////////////////////////////////////////////////////////////
 	fighterModel = labhelper::loadModelFromOBJ(model_filename);
 	sphereModel = labhelper::loadModelFromOBJ("../scenes/sphere.obj");
 }
+
 
 void debugDrawLight(const glm::mat4 &viewMatrix, const glm::mat4 &projectionMatrix, const glm::vec3 &worldSpaceLightPos)
 {
@@ -195,7 +200,11 @@ void display(void)
 	// Task 4 - Render a fullscreen quad, to generate the background from the 
 	//          environment map. 
 	///////////////////////////////////////////////////////////////////////////
-
+	glUseProgram(backgroundProgram);
+	labhelper::setUniformSlow(backgroundProgram, "environment_multiplier", environment_multiplier);
+	labhelper::setUniformSlow(backgroundProgram, "inv_PV", inverse(projectionMatrix * viewMatrix));
+	labhelper::setUniformSlow(backgroundProgram, "camera_pos", cameraPosition);
+	labhelper::drawFullScreenQuad();
 	///////////////////////////////////////////////////////////////////////////
 	// Render the .obj models
 	///////////////////////////////////////////////////////////////////////////
@@ -222,7 +231,12 @@ void display(void)
 	// Render the light source
 	debugDrawLight(viewMatrix, projectionMatrix, vec3(lightPosition));
 
-	glUseProgram( 0 );	
+
+
+	
+
+	glUseProgram(0);
+
 }
 
 bool handleEvents(void)
@@ -385,14 +399,16 @@ int main(int argc, char *argv[])
 
 	initialize();
 
+
+
 	bool stopRendering = false;
 	auto startTime = std::chrono::system_clock::now();
 
 	while (!stopRendering) {
 		//update currentTime
 		std::chrono::duration<float> timeSinceStart = std::chrono::system_clock::now() - startTime;
-		currentTime = timeSinceStart.count();
-
+		//currentTime = timeSinceStart.count();
+		currentTime = 0.0f;
 		// render to window
 		display();
 

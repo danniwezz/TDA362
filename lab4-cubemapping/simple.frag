@@ -1,4 +1,4 @@
-#version 420
+﻿#version 420
 
 // required by GLSL spec Sect 4.5.3 (though nvidia does not, amd does)
 precision highp float;
@@ -58,20 +58,56 @@ vec3 calculateDirectIllumiunation(vec3 wo, vec3 n)
 	//            to the light. If the light is backfacing the triangle, 
 	//            return vec3(0); 
 	///////////////////////////////////////////////////////////////////////////
+	 
+	 float d = length(viewSpacePosition - viewSpaceLightPosition);
+
+	 vec3 wi = normalize(viewSpaceLightPosition - viewSpacePosition);
+
+	 vec3 Li = point_light_intensity_multiplier * point_light_color * (1/(pow(d,2)));
+
+	 if( dot(n, wi) <= 0){
+	 return vec3(0.0f); 
+	 
+	 }
+
 
 	///////////////////////////////////////////////////////////////////////////
 	// Task 1.3 - Calculate the diffuse term and return that as the result
 	///////////////////////////////////////////////////////////////////////////
-	// vec3 diffuse_term = ...
+	 vec3 diffuse_term = material_color * (1.0 / PI) * abs(dot(n , wi)) * Li;
+	 //return diffuse_term;
 
 	///////////////////////////////////////////////////////////////////////////
 	// Task 2 - Calculate the Torrance Sparrow BRDF and return the light 
 	//          reflected from that instead
 	///////////////////////////////////////////////////////////////////////////
+	vec3 wh = normalize(wi + wo);
+
+	float Fwi = material_fresnel + (1 - material_fresnel) *  pow((1 - dot(wh, wi)),5);
+
+	float Dwh = ((material_shininess+2)/(2*PI)) * pow(dot(n,wh),material_shininess);
+	
+	float Gwiwo = min(1, min( 2 * ((dot(n, wh) * dot(n, wo)) / dot(wo, wh)), 2 * ((dot(n, wh) * dot(n, wi)) / dot(wo, wh))));
+	float brdf = (Fwi * Dwh * Gwiwo) / (4 * (dot(n,wo) * (dot(n,wi))));
+
+	//return brdf * dot(n,wi) * Li;
+
 	///////////////////////////////////////////////////////////////////////////
-	// Task 3 - Make your shader respect the parameters of our material model.
-	///////////////////////////////////////////////////////////////////////////
-	return vec3(material_color);
+	// Task 3 - Make your
+	///////////////////////////////////////////////////
+	//return vec3(material_color);
+	vec3 LiValue = dot(n, wi) * Li ;
+
+	vec3 dielectric_term = brdf * LiValue  + (1- Fwi) * diffuse_term;
+
+	vec3 metal_term = brdf * material_color * LiValue;
+	float m = material_metalness;
+
+	vec3 microfacet_term = m * metal_term + ((1 - m) * dielectric_term);
+	float r = material_reflectivity; 
+
+	return (r * microfacet_term + (1-r)* diffuse_term);
+
 }
 
 vec3 calculateIndirectIllumination(vec3 wo, vec3 n)
@@ -80,6 +116,17 @@ vec3 calculateIndirectIllumination(vec3 wo, vec3 n)
 	// Task 5 - Lookup the irradiance from the irradiance map and calculate
 	//          the diffuse reflection
 	///////////////////////////////////////////////////////////////////////////
+
+
+
+	//float nws = viewInverse * n;
+
+	//diffuse_term = material_color * (1.0 / PI) * irradience;
+
+
+
+
+
 	///////////////////////////////////////////////////////////////////////////
 	// Task 6 - Look up in the reflection map from the perfect specular 
 	//          direction and calculate the dielectric and metal terms. 
@@ -95,8 +142,10 @@ void main()
 	// Task 1.1 - Fill in the outgoing direction, wo, and the normal, n. Both
 	//            shall be normalized vectors in view-space. 
 	///////////////////////////////////////////////////////////////////////////
-	vec3 wo = vec3(0.0);
-	vec3 n = vec3(0.0);
+	vec3 wo = -normalize(viewSpacePosition);
+	vec3 n = normalize(viewSpaceNormal);
+
+ 
 
 	vec3 direct_illumination_term = vec3(0.0);
 	{ // Direct illumination

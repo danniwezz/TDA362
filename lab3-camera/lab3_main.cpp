@@ -47,11 +47,13 @@ mat4 rotatingCarModelMatrix(1.0f);
 
 
 
+
+
 vec3 worldUp = vec3(0.0f, 1.0f, 0.0f);
 
 // Camera parameters
-vec3 cameraPosition(10.0f, 10.0f, 10.0f);
-vec3 cameraDirection(-1.0f, -1.0f, -1.0f);
+vec3 cameraPosition(0.0f, 7.0f, -10.0f);
+vec3 cameraDirection(0.0f, -0.5f, 1.0f);
 
 void loadModels()
 {
@@ -97,7 +99,19 @@ void display(void)
 		0.000000000f, 0.816496551f, 1.00000000f, 0.000000000f,
 		-0.707106769f, -0.408248276f, 1.00000000f, 0.000000000f,
 		0.000000000f, 0.000000000f, -30.0000000f, 1.00000000f);
-	mat4 viewMatrix = constantViewMatrix;
+
+
+
+	// use camera direction as -z axis and compute the x (cameraRight) and y (cameraUp) base vectors
+	vec3 cameraRight = normalize(cross(cameraDirection, worldUp));
+	vec3 cameraUp = normalize(cross(cameraRight, cameraDirection));
+
+	mat3 cameraBaseVectorsWorldSpace(cameraRight, cameraUp, -cameraDirection);
+
+	mat4 cameraRotation = mat4(transpose(cameraBaseVectorsWorldSpace));
+	mat4 viewMatrix = cameraRotation * translate(-cameraPosition);
+
+
 
 	// Setup the projection matrix
         if (w != old_w || h != old_h)
@@ -180,7 +194,7 @@ int main(int argc, char *argv[])
 		display();
 
                 // Render overlay GUI.
-                //gui();
+                gui();
 
 		// Swap front and back buffer. This frame will now been displayed.
 		SDL_GL_SwapWindow(g_window);
@@ -202,9 +216,16 @@ int main(int argc, char *argv[])
 				static int prev_ycoord = event.motion.y;
 				int delta_x = event.motion.x - prev_xcoord;
 				int delta_y = event.motion.y - prev_ycoord;
+				
 				if (event.button.button & SDL_BUTTON(SDL_BUTTON_LEFT)) {
-					printf("Mouse motion while left button down (%i, %i)\n", event.motion.x, event.motion.y);
+					float rotationSpeed = 0.005f;
+					mat4 yaw = rotate(rotationSpeed * -delta_x, worldUp);
+					mat4 pitch = rotate(rotationSpeed * -delta_y, normalize(cross(cameraDirection, worldUp)));
+					cameraDirection = vec3(pitch * yaw * vec4(cameraDirection, 0.0f));
 				}
+
+			
+
 				prev_xcoord = event.motion.x;
 				prev_ycoord = event.motion.y;
 			}
@@ -215,23 +236,31 @@ int main(int argc, char *argv[])
 
 		// implement controls based on key states
 		float speed = 0.3f;
-		static mat4 T(1.0f), R(1.0f);
+		static mat4 T(1.0f), R(1.0f); 
+		//vec4 pos(cameraPosition[0], cameraPosition[1], cameraPosition[2], 1.0f);
+		vec4 pos(0.0f, 7.0f, -10.0f, 1.0f);
 		if (state[SDL_SCANCODE_UP]) {
 			T[3] += speed * R[2];
+			cameraPosition = T*R*pos;
 		}
 		if (state[SDL_SCANCODE_DOWN]) {
 			T[3] -= speed * R[2];
+			cameraPosition = T*R*pos;
 		}
 		if (state[SDL_SCANCODE_LEFT]) {
 			R[0] -= 0.03f * R[2];
+			cameraPosition = T*R*pos;
 		}
 		if (state[SDL_SCANCODE_RIGHT]) {
 			R[0] += 0.03f * R[2];
+			cameraPosition = T*R*pos;
+
 		}
-		
+		cameraDirection = R*normalize(vec4(0.0f, -0.5f, 1.0f, 0.0f));
 		R[0] = normalize(R[0]);
 		R[2] = vec4(cross(vec3(R[0]), vec3(R[1])), 0.0f);
 		carModelMatrix = T * R;
+
 
 
 		rotatingCarModelMatrix = rotate(currentTime*3.0f, vec3(0.0f, 0.1f, 0.0f)) * translate(vec3(-5.0f, 0.0f, 0.0f));
