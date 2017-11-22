@@ -125,6 +125,16 @@ struct FboInfo {
 		// Generate and bind framebuffer
 		///////////////////////////////////////////////////////////////////////
 		// >>> @task 1
+		glGenFramebuffers(1, &framebufferId);
+		glBindFramebuffer(GL_FRAMEBUFFER, framebufferId);
+
+		// bind the texture as color attachment 0 (to the currently bound framebuffer)
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colorTextureTarget, 0);
+		glDrawBuffer(GL_COLOR_ATTACHMENT0);
+
+		// bind the texture as depth attachment (to the currently bound framebuffer)
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthBuffer, 0);
+
 		// check if framebuffer is complete
 		isComplete = checkFramebufferComplete();
 
@@ -203,6 +213,9 @@ void initGL()
 	///////////////////////////////////////////////////////////////////////////
 	int w, h;
 	SDL_GetWindowSize(g_window, &w, &h);
+	const int numFbos = 5;
+	for (int i = 0; i < numFbos; i++)
+		fboList.push_back(FboInfo(w, h));
 }
 
 void drawScene(const mat4 &view, const mat4 &projection)
@@ -281,17 +294,28 @@ void display()
 	// draw scene from security camera
 	///////////////////////////////////////////////////////////////////////////
 	// >>> @task 2
-	// ...
+	FboInfo &securityFB = fboList[0];
+	glBindFramebuffer(GL_FRAMEBUFFER, securityFB.framebufferId);
+	//Clear camera view
+	glViewport(0, 0, securityFB.width, securityFB.height);
+	glClearColor(0.2, 0.2, 0.8, 1.0);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	//Draw scene from camera
+	drawScene(securityCamViewMatrix, securityCamProjectionMatrix); 
 
 	///////////////////////////////////////////////////////////////////////////
 	// draw scene from camera
 	///////////////////////////////////////////////////////////////////////////
-	glBindFramebuffer(GL_FRAMEBUFFER, 0); // to be replaced with another framebuffer when doing post processing
+	FboInfo &view = fboList[1];
+	glBindFramebuffer(GL_FRAMEBUFFER, view.framebufferId); // to be replaced with another framebuffer when doing post processing
 	glViewport(0, 0, w, h);
 	glClearColor(0.2, 0.2, 0.8, 1.0);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	drawScene(viewMatrix, projectionMatrix); // using both shaderProgram and backgroundProgram
+
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, view.colorTextureTarget);
 
 	// camera (obj-model)
 	glUseProgram(shaderProgram);
@@ -299,12 +323,28 @@ void display()
 	labhelper::setUniformSlow(shaderProgram, "modelViewMatrix", viewMatrix * inverse(securityCamViewMatrix));
 	labhelper::setUniformSlow(shaderProgram, "normalMatrix", inverse(transpose(viewMatrix * inverse(securityCamViewMatrix))));
 	
+	//Task 2?
+	labhelper::Material &screen = landingpadModel->m_materials[8];
+	screen.m_emission_texture.gl_id = securityFB.colorTextureTarget;
+	
 	labhelper::render(cameraModel);
 
+	
 	///////////////////////////////////////////////////////////////////////////
 	// Post processing pass(es)
 	///////////////////////////////////////////////////////////////////////////
-	glUseProgram( 0 );
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	//Clear
+
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	glUseProgram(postFxShader); //Change shader
+	labhelper::setUniformSlow(postFxShader, "time", currentTime);
+	labhelper::setUniformSlow(postFxShader, "currentEffect", currentEffect);
+	labhelper::setUniformSlow(postFxShader, "filterSize", filterSizes[filterSize - 1]);
+
+	labhelper::drawFullScreenQuad();
+
 
 	CHECK_GL_ERROR();
 }
@@ -413,7 +453,7 @@ int main(int argc, char *argv[])
 		display();
 
 		// Render overlay GUI.
-		//gui();
+		gui();
 
 		// Swap front and back buffer. This frame will now been displayed.
 		SDL_GL_SwapWindow(g_window);
