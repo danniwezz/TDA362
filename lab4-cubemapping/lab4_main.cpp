@@ -408,7 +408,7 @@ int main(int argc, char *argv[])
 		//update currentTime
 		std::chrono::duration<float> timeSinceStart = std::chrono::system_clock::now() - startTime;
 		//currentTime = timeSinceStart.count();
-		currentTime = 0.0f;
+		currentTime = 5.0f;
 		// render to window
 		display();
 

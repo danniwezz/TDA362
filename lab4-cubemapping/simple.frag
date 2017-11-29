@@ -116,14 +116,25 @@ vec3 calculateIndirectIllumination(vec3 wo, vec3 n)
 	// Task 5 - Lookup the irradiance from the irradiance map and calculate
 	//          the diffuse reflection
 	///////////////////////////////////////////////////////////////////////////
+	vec3 v = vec3(viewInverse);
+	vec3 nws = v  * n;
+	vec3 dir = nws;
+
+	// Calculate the spherical coordinates of the direction
+	float theta = acos(max(-1.0f, min(1.0f, dir.y)));
+	float phi = atan(dir.z, dir.x);
+	if (phi < 0.0f) phi = phi + 2.0f * PI;
 
 
+	// Use these to lookup the color in the environment map
+	vec2 lookup = vec2(phi / (2.0 * PI), theta / PI);
+	vec3 irradience = environment_multiplier * texture(irradianceMap, lookup).rgb;
 
-	//float nws = viewInverse * n;
+	vec3 diffuse_term = material_color * (1.0 / PI) * irradience;
 
-	//diffuse_term = material_color * (1.0 / PI) * irradience;
+	//return diffuse_term;
 
-
+	
 
 
 
@@ -131,8 +142,30 @@ vec3 calculateIndirectIllumination(vec3 wo, vec3 n)
 	// Task 6 - Look up in the reflection map from the perfect specular 
 	//          direction and calculate the dielectric and metal terms. 
 	///////////////////////////////////////////////////////////////////////////
+	float s = material_shininess;
 
-	return vec3(0.0);
+	vec3 wi = -reflect (wo, n);
+	vec3 wh = normalize(wi + wo);
+	
+	float Fwi = material_fresnel + (1 - material_fresnel) *  pow((1 - dot(wh, wi)),5);
+
+	float roughness = sqrt(sqrt(2/(s+2)));
+	vec3 Li = environment_multiplier * textureLod(reflectionMap, lookup, roughness * 7.0).xyz;
+
+	 vec3 dielectric_term = Fwi * Li + (1- Fwi) * diffuse_term;
+	 vec3 metal_term = Fwi * material_color * Li;
+
+
+	float m = material_metalness;
+
+	vec3 microfacet_term = m * metal_term + ((1 - m) * dielectric_term);
+	float r = material_reflectivity; 
+
+	return (r * microfacet_term + (1-r)* diffuse_term);
+
+
+
+	
 }
 
 
@@ -160,7 +193,7 @@ void main()
 	///////////////////////////////////////////////////////////////////////////
 	// Task 7 - Make glowy things glow!
 	///////////////////////////////////////////////////////////////////////////
-	vec3 emission_term = vec3(0.0);
+	vec3 emission_term = material_emission * material_color;
 
 	fragmentColor.xyz =
 		direct_illumination_term +

@@ -13,6 +13,7 @@ uniform float environment_multiplier;
 
 void main() 
 {
+
 	// Calculate the world-space position of this fragment on the near plane
 	vec4 pixel_world_pos = inv_PV * vec4(texCoord * 2.0 - 1.0, 1.0, 1.0);
 	pixel_world_pos = (1.0 / pixel_world_pos.w) * pixel_world_pos;
