@@ -9,5 +9,5 @@ layout(location = 0) out vec4 fragmentColor;
 
 void main() 
 {
-	fragmentColor = vec4(material_color, 1.0);
+	fragmentColor = vec4(0.3,0.7,0.1,1.0);
 }

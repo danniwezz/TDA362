@@ -4,6 +4,7 @@
 extern "C" _declspec(dllexport) unsigned int NvOptimusEnablement = 0x00000001;
 #endif
 
+#include <stb_image.h>
 #include <GL/glew.h>
 #include <cmath>
 #include <cstdlib>
@@ -21,6 +22,7 @@ using namespace glm;
 #include <Model.h>
 #include "hdr.h"
 #include "fbo.h"
+#include "ParticleSystem.h"
 
 
 
@@ -61,8 +63,17 @@ vec3 point_light_color = vec3(1.f, 1.f, 1.f);
 float point_light_intensity_multiplier = 10000.0f;
 
 
+///////////////////////////////////////////////////////////////////////////////
+// Shadow map
+///////////////////////////////////////////////////////////////////////////////
+enum ClampMode {
+	Edge = 1,
+	Border = 2
+};
 
-
+FboInfo shadowMapFB;
+int shadowMapResolution = 1024;
+int shadowMapClampMode = ClampMode::Edge;
 
 ///////////////////////////////////////////////////////////////////////////////
 // Camera parameters.
@@ -83,6 +94,17 @@ labhelper::Model *sphereModel = nullptr;
 mat4 roomModelMatrix;
 mat4 landingPadModelMatrix; 
 mat4 fighterModelMatrix;
+
+///////////////////////////////////////////////////////////////////////////////
+// Particles
+///////////////////////////////////////////////////////////////////////////////
+GLuint particleBuffer;
+GLuint particleVertexArrayObject;
+ParticleSystem particle_system(100000);
+GLuint particleShader;
+GLuint texture;
+bool activeParticles = true;
+
 
 void loadShaders(bool is_reload)
 {
@@ -126,6 +148,43 @@ void initGL()
 	environmentMap = labhelper::loadHdrTexture("../scenes/envmaps/" + envmap_base_name + ".hdr");
 	irradianceMap = labhelper::loadHdrTexture("../scenes/envmaps/" + envmap_base_name + "_irradiance.hdr");
 
+	///////////////////////////////////////////////////////////////////////
+	// Setup Framebuffer for shadow map rendering
+	///////////////////////////////////////////////////////////////////////
+	shadowMapFB.resize(shadowMapResolution, shadowMapResolution);
+	glBindTexture(GL_TEXTURE_2D, shadowMapFB.depthBuffer);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+
+	///////////////////////////////////////////////////////////////////////
+	// Setup Framebuffer for praticles
+	///////////////////////////////////////////////////////////////////////
+	glGenBuffers(1, &particleBuffer);
+	glBindBuffer(GL_ARRAY_BUFFER, particleBuffer);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(vec4)* 100000, nullptr, GL_STATIC_DRAW);
+
+
+	glGenVertexArrays(1, &particleVertexArrayObject);
+	glBindVertexArray(particleVertexArrayObject);
+	
+	glVertexAttribPointer(0, 4, GL_FLOAT, false/*normalized*/, 0/*stride*/, 0/*offset*/);
+	glEnableVertexAttribArray(0); 
+	
+	//Setup particle system
+	/*
+	for (unsigned int i = 0; i < nbr_particles; i++){
+		Particle temp;
+		const float theta = labhelper::uniform_randf(0.f, 2.f * M_PI);
+		const float u = labhelper::uniform_randf(-1.f, 1.f);
+		temp.pos = glm::vec3(sqrt(1.f - u * u) * cosf(theta), u, sqrt(1.f - u * u) * sinf(theta));
+		temp.pos = (scale(vec3(10.0, 10.0, 10.0)) * vec4(temp.pos,1.0));
+		particle_system.particles.push_back(temp);
+	}
+	*/
+
+
+	//Shader
+	particleShader = labhelper::loadShaderProgram("../project/particle.vert", "../project/particle.frag");
 
 	glEnable(GL_DEPTH_TEST);	// enable Z-buffering 
 	glEnable(GL_CULL_FACE);		// enables backface culling
@@ -183,6 +242,90 @@ void drawScene(GLuint currentShaderProgram, const mat4 &viewMatrix, const mat4 &
 	labhelper::setUniformSlow(currentShaderProgram, "normalMatrix", inverse(transpose(viewMatrix * fighterModelMatrix)));
 
 	labhelper::render(fighterModel);
+
+	//Shadow
+	mat4 lightMatrix = lightProjectionMatrix * lightViewMatrix * inverse(viewMatrix);
+	lightMatrix = translate(vec3(0.5, 0.5, 0.5))*scale(vec3(0.5, 0.5, 0.5))*lightMatrix;
+	labhelper::setUniformSlow(currentShaderProgram, "lightMatrix", lightMatrix);
+
+
+	if (activeParticles){	
+		for (int i = 0; i < 64; i++){
+			Particle temp;
+
+			//velocity
+			const float theta = labhelper::uniform_randf(0.f, 2.f * M_PI);
+			//const float u = labhelper::uniform_randf(-1.f, 1.f);
+			const float u = labhelper::uniform_randf(0.95f, 1.f);
+			temp.velocity = vec3(u, sqrt(1.f - u * u) * cosf(theta), sqrt(1.f - u * u) * sinf(theta));
+			temp.velocity = (scale(vec3(10.0, 10.0, 10.0)) * vec4(temp.velocity, 1.0));
+
+			//pos
+			temp.pos = vec3(18.0, 18.0, 0.0);
+			temp.pos = vec4(temp.pos, 1.0) * fighterModelMatrix;
+
+			//start time
+			temp.lifetime = 0;
+
+			//life time
+			temp.life_length = 5.0;
+
+			particle_system.spawn(temp);
+		}
+		
+		particle_system.process_particles(deltaTime);
+
+		unsigned int active_particles = particle_system.particles.size();
+		std::vector<vec4> data;
+		data.reserve(active_particles);
+		for (unsigned int i = 0; i < active_particles; i++){
+			vec4 temp;
+			temp.x = particle_system.particles[i].pos.x;
+			temp.y = particle_system.particles[i].pos.y;
+			temp.z = particle_system.particles[i].pos.z;
+			temp.w = particle_system.particles[i].lifetime;
+			data.push_back(temp);
+		}
+		// sort particles with sort from c++ standard library
+		std::sort(data.begin(), std::next(data.begin(), active_particles),
+			[](const vec4 &lhs, const vec4 &rhs){ return lhs.z < rhs.z; });
+		
+		glBindBuffer(GL_ARRAY_BUFFER, particleBuffer);
+		
+		glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vec4)*active_particles, data.data());
+		
+		glUseProgram(particleShader);
+				
+		glBindVertexArray(particleVertexArrayObject);
+		labhelper::setUniformSlow(particleShader, "P", projectionMatrix * viewMatrix);
+		labhelper::setUniformSlow(particleShader, "screen_x", float(windowWidth));
+		labhelper::setUniformSlow(particleShader, "screen_y", float(windowHeight));
+		
+		
+		
+		
+		int w, h, comp;
+		unsigned char* image = stbi_load("../lab2-textures/explosion.png", &w, &h, &comp, STBI_rgb_alpha);
+		glActiveTexture(GL_TEXTURE0);
+		glGenTextures(1, &texture);
+		glBindTexture(GL_TEXTURE_2D, texture);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, image);
+		free(image);
+
+		// Enable shader program point size modulation.
+		glEnable(GL_PROGRAM_POINT_SIZE);
+		// Enable blending.
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		//glDrawElements(GL_POINTS, active_particles, GL_UNSIGNED_INT, 0);
+		glDrawArrays(GL_POINTS, 0, active_particles);
+		
+	}
+		
 }
 
 
@@ -223,6 +366,49 @@ void display(void)
 	glActiveTexture(GL_TEXTURE0);
 
 
+	///////////////////////////////////////////////////////////////////////////
+	// Set up shadow map parameters
+	///////////////////////////////////////////////////////////////////////////
+	//Resize
+	/*
+	if (shadowMapFB.width != shadowMapResolution || shadowMapFB.height != shadowMapResolution) {
+		shadowMapFB.resize(shadowMapResolution, shadowMapResolution);
+	}
+
+	if (shadowMapClampMode == ClampMode::Edge) {
+		glBindTexture(GL_TEXTURE_2D, shadowMapFB.depthBuffer);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	}
+
+	if (shadowMapClampMode == ClampMode::Border) {
+		glBindTexture(GL_TEXTURE_2D, shadowMapFB.depthBuffer);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+		vec4 zeros(0.0f);
+		glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, &zeros.x);
+	}
+	*/
+	///////////////////////////////////////////////////////////////////////////
+	// Draw Shadow Map
+	///////////////////////////////////////////////////////////////////////////
+	/*
+	glBindFramebuffer(GL_FRAMEBUFFER, shadowMapFB.framebufferId); // to be replaced with another framebuffer when doing post processing
+	glViewport(0, 0, shadowMapFB.width, shadowMapFB.height);
+	glClearColor(0.2, 0.2, 0.8, 1.0);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, shadowMapFB.colorTextureTarget);
+	glActiveTexture(GL_TEXTURE10);
+	glBindTexture(GL_TEXTURE_2D, shadowMapFB.depthBuffer);
+	drawScene(simpleShaderProgram, lightViewMatrix, lightProjMatrix, lightViewMatrix, lightProjMatrix);
+
+	labhelper::Material &screen = landingpadModel->m_materials[8];
+	screen.m_emission_texture.gl_id = shadowMapFB.colorTextureTarget;
+	*/
+
 
 	///////////////////////////////////////////////////////////////////////////
 	// Draw from camera
@@ -235,8 +421,6 @@ void display(void)
 	drawBackground(viewMatrix, projMatrix);
 	drawScene(shaderProgram, viewMatrix, projMatrix, lightViewMatrix, lightProjMatrix);
 	debugDrawLight(viewMatrix, projMatrix, vec3(lightPosition));
-
-
 
 }
 
@@ -291,6 +475,22 @@ bool handleEvents(void)
 	if (state[SDL_SCANCODE_E]) {
 		cameraPosition += cameraSpeed * worldUp;
 	}
+
+	float speed = 0.8f;
+	// car movement
+	if (state[SDL_SCANCODE_UP]) {
+		fighterModelMatrix = fighterModelMatrix * translate(vec3(-speed, 0.0, 0.0));
+	}
+	if (state[SDL_SCANCODE_DOWN]) {
+		fighterModelMatrix = fighterModelMatrix * translate(vec3(speed, 0.0, 0.0));
+	}
+	if (state[SDL_SCANCODE_LEFT]) {
+		fighterModelMatrix = fighterModelMatrix * rotate(-speed/6,vec3(0.0, 1.0, 0.0));
+	}
+	if (state[SDL_SCANCODE_RIGHT]) {
+		fighterModelMatrix = fighterModelMatrix * rotate(speed/6,vec3(0.0, 1.0, 0.0));
+	}
+
 	return quitEvent;
 }
 
@@ -300,6 +500,7 @@ void gui()
 	ImGui_ImplSdlGL3_NewFrame(g_window);
 
 	// ----------------- Set variables --------------------------
+	ImGui::Checkbox("Use particles", &activeParticles);
 	ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
 	// ----------------------------------------------------------
 	// Render the GUI.
