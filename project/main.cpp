@@ -248,9 +248,9 @@ void drawScene(GLuint currentShaderProgram, const mat4 &viewMatrix, const mat4 &
 	lightMatrix = translate(vec3(0.5, 0.5, 0.5))*scale(vec3(0.5, 0.5, 0.5))*lightMatrix;
 	labhelper::setUniformSlow(currentShaderProgram, "lightMatrix", lightMatrix);
 
-
+	float speed = 20.0f;
 	if (activeParticles){	
-		for (int i = 0; i < 64; i++){
+		for (int i = 0; i < 16; i++){
 			Particle temp;
 
 			//velocity
@@ -258,11 +258,11 @@ void drawScene(GLuint currentShaderProgram, const mat4 &viewMatrix, const mat4 &
 			//const float u = labhelper::uniform_randf(-1.f, 1.f);
 			const float u = labhelper::uniform_randf(0.95f, 1.f);
 			temp.velocity = vec3(u, sqrt(1.f - u * u) * cosf(theta), sqrt(1.f - u * u) * sinf(theta));
-			temp.velocity = (scale(vec3(10.0, 10.0, 10.0)) * vec4(temp.velocity, 1.0));
+			temp.velocity = mat3(fighterModelMatrix) * speed * temp.velocity;
 
 			//pos
-			temp.pos = vec3(18.0, 18.0, 0.0);
-			temp.pos = vec4(temp.pos, 1.0) * fighterModelMatrix;
+			temp.pos = vec3(20.0f, 3.0f, 0.0);
+			temp.pos = fighterModelMatrix * vec4(temp.pos, 1.0);
 
 			//start time
 			temp.lifetime = 0;
@@ -279,10 +279,11 @@ void drawScene(GLuint currentShaderProgram, const mat4 &viewMatrix, const mat4 &
 		std::vector<vec4> data;
 		data.reserve(active_particles);
 		for (unsigned int i = 0; i < active_particles; i++){
+			vec3 temp_pos = vec3(viewMatrix*vec4(particle_system.particles[i].pos, 1.0f));
 			vec4 temp;
-			temp.x = particle_system.particles[i].pos.x;
-			temp.y = particle_system.particles[i].pos.y;
-			temp.z = particle_system.particles[i].pos.z;
+			temp.x = temp_pos.x;
+			temp.y = temp_pos.y;
+			temp.z = temp_pos.z;
 			temp.w = particle_system.particles[i].lifetime;
 			data.push_back(temp);
 		}
@@ -297,7 +298,7 @@ void drawScene(GLuint currentShaderProgram, const mat4 &viewMatrix, const mat4 &
 		glUseProgram(particleShader);
 				
 		glBindVertexArray(particleVertexArrayObject);
-		labhelper::setUniformSlow(particleShader, "P", projectionMatrix * viewMatrix);
+		labhelper::setUniformSlow(particleShader, "P", projectionMatrix);
 		labhelper::setUniformSlow(particleShader, "screen_x", float(windowWidth));
 		labhelper::setUniformSlow(particleShader, "screen_y", float(windowHeight));
 		
