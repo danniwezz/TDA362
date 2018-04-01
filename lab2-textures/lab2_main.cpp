@@ -42,6 +42,8 @@ void initGL()
 	///////////////////////////////////////////////////////////////////////////
 	// Create the positions buffer object
 	///////////////////////////////////////////////////////////////////////////	
+
+	
 	const float positions[] = {
 		// X Y Z
 		-10.0f, -10.0f, -30.0f,    // v0
@@ -54,6 +56,7 @@ void initGL()
 	glBufferData( GL_ARRAY_BUFFER, sizeof(positions), positions, GL_STATIC_DRAW );		// Send the vetex position data to the current buffer
 	glVertexAttribPointer(0, 3, GL_FLOAT, false/*normalized*/, 0/*stride*/, 0/*offset*/);
 	glEnableVertexAttribArray(0);
+
 
 	///////////////////////////////////////////////////////////////////////////
 	// Create the colors buffer object

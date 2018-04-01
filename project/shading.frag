@@ -14,7 +14,9 @@ uniform float material_shininess;
 uniform float material_emission;
 
 uniform int has_emission_texture;
+
 layout(binding = 5) uniform sampler2D emissiveMap;
+
 
 ///////////////////////////////////////////////////////////////////////////////
 // Environment

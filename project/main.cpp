@@ -21,6 +21,7 @@ using namespace glm;
 #include <Model.h>
 #include "hdr.h"
 #include "fbo.h"
+#include "heightfield.h"
 
 
 
@@ -37,6 +38,7 @@ float previousTime = 0.0f;
 float deltaTime    = 0.0f;
 bool showUI = false;
 int windowWidth, windowHeight;
+HeightField terrain;
 
 ///////////////////////////////////////////////////////////////////////////////
 // Shader programs
@@ -44,6 +46,7 @@ int windowWidth, windowHeight;
 GLuint shaderProgram; // Shader for rendering the final image
 GLuint simpleShaderProgram; // Shader used to draw the shadow map
 GLuint backgroundProgram;
+GLuint heightFieldProgram;
 
 ///////////////////////////////////////////////////////////////////////////////
 // Environment
@@ -87,7 +90,7 @@ float spotInnerAngle;
 ///////////////////////////////////////////////////////////////////////////////
 // Camera parameters.
 ///////////////////////////////////////////////////////////////////////////////
-vec3 cameraPosition(-70.0f, 50.0f, 70.0f);
+vec3 cameraPosition(-70.0f, 500.0f, 70.0f);
 vec3 cameraDirection = normalize(vec3(0.0f) - cameraPosition);
 float cameraSpeed = 1.0f;
 
@@ -103,25 +106,34 @@ labhelper::Model *sphereModel = nullptr;
 mat4 roomModelMatrix;
 mat4 landingPadModelMatrix; 
 mat4 fighterModelMatrix;
+mat4 heightFieldMatrix;
 
 void loadShaders(bool is_reload)
 {
+
+
 	GLuint shader = labhelper::loadShaderProgram("../project/simple.vert", "../project/simple.frag", is_reload);
 	if (shader != 0) simpleShaderProgram = shader; 
 	shader = labhelper::loadShaderProgram("../project/background.vert", "../project/background.frag", is_reload);
 	if (shader != 0) backgroundProgram = shader;
 	shader = labhelper::loadShaderProgram("../project/shading.vert", "../project/shading.frag", is_reload);
 	if (shader != 0) shaderProgram = shader;
+	shader = labhelper::loadShaderProgram("../project/heightfield.vert", "../project/heightfield.frag", is_reload);
+	if (shader != 0) shaderProgram = shader;
 }
 
 void initGL()
 {
+	
+	
+
 	///////////////////////////////////////////////////////////////////////
 	//		Load Shaders
 	///////////////////////////////////////////////////////////////////////
 	backgroundProgram   = labhelper::loadShaderProgram("../project/background.vert", "../project/background.frag");
 	shaderProgram       = labhelper::loadShaderProgram("../project/shading.vert",    "../project/shading.frag");
 	simpleShaderProgram = labhelper::loadShaderProgram("../project/simple.vert",     "../project/simple.frag");
+	heightFieldProgram = labhelper::loadShaderProgram("../project/heightfield.vert", "../project/heightfield.frag");
 
 	///////////////////////////////////////////////////////////////////////
 	// Load models and set up model matrices
@@ -133,6 +145,7 @@ void initGL()
 	roomModelMatrix = mat4(1.0f);
 	fighterModelMatrix = translate(15.0f * worldUp);
 	landingPadModelMatrix = mat4(1.0f);
+	
 
 	///////////////////////////////////////////////////////////////////////
 	// Load environment map
@@ -146,6 +159,10 @@ void initGL()
 	environmentMap = labhelper::loadHdrTexture("../scenes/envmaps/" + envmap_base_name + ".hdr");
 	irradianceMap = labhelper::loadHdrTexture("../scenes/envmaps/" + envmap_base_name + "_irradiance.hdr");
 
+	terrain.loadHeightField("../scenes/nlsFinland/L3123F.png");
+	terrain.loadDiffuseTexture("../scenes/nlsFinland/L3123F_downscaled.jpg");
+
+
 
 	///////////////////////////////////////////////////////////////////////
 	// Setup Framebuffer for shadow map rendering
@@ -156,8 +173,8 @@ void initGL()
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
 
 	glEnable(GL_DEPTH_TEST);	// enable Z-buffering 
-	glEnable(GL_CULL_FACE);		// enables backface culling
-
+	//glEnable(GL_CULL_FACE);		// enables backface culling
+	terrain.generateMesh(128);
 
 }
 
@@ -209,16 +226,25 @@ void drawScene(GLuint currentShaderProgram, const mat4 &viewMatrix, const mat4 &
 	labhelper::setUniformSlow(currentShaderProgram, "modelViewProjectionMatrix", projectionMatrix * viewMatrix * fighterModelMatrix);
 	labhelper::setUniformSlow(currentShaderProgram, "modelViewMatrix", viewMatrix * fighterModelMatrix);
 	labhelper::setUniformSlow(currentShaderProgram, "normalMatrix", inverse(transpose(viewMatrix * fighterModelMatrix)));
+	labhelper::setUniformSlow(currentShaderProgram, "material_color", vec3(1.0f));
+	//labhelper::render(fighterModel);
 
-	labhelper::render(fighterModel);
+	//send tesselation to hight.vert
+
+	labhelper::setUniformSlow(currentShaderProgram, "tesselation", terrain.m_meshResolution);
+	labhelper::setUniformSlow(currentShaderProgram, "normalMatrix", inverse(transpose(viewMatrix * heightFieldMatrix)));
+
 }
-
 
 void display(void)
 {
 	///////////////////////////////////////////////////////////////////////////
 	// Check if window size has changed and resize buffers as needed
 	///////////////////////////////////////////////////////////////////////////
+
+
+	
+
 	{
 		int w, h;
 		SDL_GetWindowSize(g_window, &w, &h);
@@ -232,6 +258,7 @@ void display(void)
 	// setup matrices
 	///////////////////////////////////////////////////////////////////////////
 	mat4 projMatrix = perspective(radians(45.0f), float(windowWidth) / float(windowHeight), 5.0f, 2000.0f);
+	mat4 heightFieldMatrix =mat4(1.0f);
 	mat4 viewMatrix = lookAt(cameraPosition, cameraPosition + cameraDirection, worldUp);
 
 	vec4 lightStartPosition = vec4(40.0f, 40.0f, 0.0f, 1.0f);
@@ -308,7 +335,7 @@ void display(void)
 	labhelper::Material &screen = landingpadModel->m_materials[8];
 	////////////////////////// ???
 	//screen.m_emission_texture.gl_id = shadowMapFB.colorTextureTarget;
-
+	
 
 	///////////////////////////////////////////////////////////////////////////
 	// Draw from camera
@@ -320,9 +347,43 @@ void display(void)
 
 	drawBackground(viewMatrix, projMatrix);
 	drawScene(shaderProgram, viewMatrix, projMatrix, lightViewMatrix, lightProjMatrix);
+
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, terrain.m_texid_diffuse);
+
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, terrain.m_texid_hf);
+
+	vec4 viewSpaceLightPosition = viewMatrix * vec4(lightPosition, 1.0f);
+
+	glUseProgram(heightFieldProgram);
+	labhelper::setUniformSlow(heightFieldProgram, "tesselation", terrain.m_meshResolution);
+	labhelper::setUniformSlow(heightFieldProgram, "normalMatrix", inverse(transpose(viewMatrix * heightFieldMatrix)));
+	labhelper::setUniformSlow(heightFieldProgram, "modelViewProjectionMatrix", projMatrix * viewMatrix);
+	labhelper::setUniformSlow(heightFieldProgram, "modelViewMatrix", viewMatrix * heightFieldMatrix);
+	labhelper::setUniformSlow(heightFieldProgram, "viewSpaceLightPosition", vec3(viewSpaceLightPosition));
+
+	labhelper::setUniformSlow(heightFieldProgram, "point_light_color", point_light_color);
+	labhelper::setUniformSlow(heightFieldProgram, "point_light_intensity_multiplier", point_light_intensity_multiplier);
+	
+	labhelper::setUniformSlow(heightFieldProgram, "viewSpaceLightDir", normalize(vec3(viewMatrix * vec4(-lightPosition, 0.0f))));
+	labhelper::setUniformSlow(heightFieldProgram, "environment_multiplier", environment_multiplier);
+
+
+
+	// camera
+	labhelper::setUniformSlow(heightFieldProgram, "viewInverse", inverse(viewMatrix));
+	
+	
+	
+	terrain.submitTriangles();
+
+
 	debugDrawLight(viewMatrix, projMatrix, vec3(lightPosition));
 
 	CHECK_GL_ERROR();
+
+	
 
 }
 
